@@ -1,0 +1,57 @@
+# Paramètres sensibles - JAMAIS sur GitHub
+bicep/parameters.dev.json
+bicep/parameters.*.json
+
+# Variables d'environnement
+.env
+.env.*
+*.env
+
+# Secrets et certificats
+*.pem
+*.key
+*.cert
+*.pfx
+*.p12
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+yarn.lock
+package-lock.json
+
+# Logs
+logs/
+*.log
+
+# Coverage et tests
+coverage/
+.nyc_output
+
+# Build
+dist/
+build/
+
+# Docker
+.docker/
+
+# Azure
+.azure/
+azuredeploy.parameters.json
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/settings.json
+.idea/
+*.suo
+*.user
+
+# Terraform (si utilisé plus tard)
+*.tfstate
+*.tfstate.*
+.terraform/

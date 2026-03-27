@@ -1,0 +1,41 @@
+# Dépendances
+node_modules
+npm-debug.log
+yarn-error.log
+package-lock.json
+
+# Variables d'environnement et secrets
+.env
+.env.*
+*.pem
+*.key
+*.cert
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Documentation
+*.md
+docs/
+
+# Logs
+logs/
+*.log
+
+# Tests
+coverage/
+.nyc_output
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

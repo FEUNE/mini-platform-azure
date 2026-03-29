@@ -1,0 +1,144 @@
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    exclude:
+      - docs/*
+      - README.md
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: miniplatform-dev-secrets
+  - name: ACR_LOGIN_SERVER
+    value: 'miniplatformdevacr.azurecr.io'
+  - name: IMAGE_NAME
+    value: 'mini-platform-api'
+  - name: IMAGE_TAG
+    value: '$(Build.BuildId)'
+  - name: AZURE_SERVICE_CONNECTION
+    value: 'azure-miniplatform-dev'
+  - name: RESOURCE_GROUP
+    value: 'miniplatform-dev-rg'
+
+stages:
+
+# ─────────────────────────────────────────
+# STAGE 1 — CI : Build + Scan + Push
+# ─────────────────────────────────────────
+- stage: CI
+  displayName: 'Build & Push Docker Image'
+  jobs:
+  - job: Build
+    displayName: 'Build, Scan and Push'
+    timeoutInMinutes: 30
+    cancelTimeoutInMinutes: 5
+    steps:
+
+    - checkout: self
+      fetchDepth: 1
+
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '24.x'
+      displayName: 'Install Node.js'
+
+    - script: |
+        cd app-example/api
+        npm ci --omit=dev
+        npm audit --audit-level=high
+      displayName: 'Install dependencies + audit'
+
+    - script: |
+        echo "$(ACR_PASSWORD)" | docker login $(ACR_LOGIN_SERVER) \
+          --username $(ACR_USERNAME) \
+          --password-stdin
+      displayName: 'Login to ACR'
+
+    - script: |
+        docker build \
+          --no-cache \
+          --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
+          --build-arg BUILD_VERSION=$(IMAGE_TAG) \
+          -t $(ACR_LOGIN_SERVER)/$(IMAGE_NAME):$(IMAGE_TAG) \
+          -t $(ACR_LOGIN_SERVER)/$(IMAGE_NAME):latest \
+          app-example/api
+      displayName: 'Build Docker image'
+
+    - script: |
+        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+        trivy image \
+          --exit-code 1 \
+          --severity HIGH,CRITICAL \
+          --no-progress \
+          --ignore-unfixed \
+          $(ACR_LOGIN_SERVER)/$(IMAGE_NAME):$(IMAGE_TAG)
+      displayName: 'Scan image vulnerabilities (Trivy)'
+      continueOnError: false
+
+    - script: |
+        docker push $(ACR_LOGIN_SERVER)/$(IMAGE_NAME):$(IMAGE_TAG)
+        docker push $(ACR_LOGIN_SERVER)/$(IMAGE_NAME):latest
+      displayName: 'Push image to ACR'
+
+    - script: docker logout $(ACR_LOGIN_SERVER)
+      displayName: 'Logout from ACR'
+      condition: always()
+
+# ─────────────────────────────────────────
+# STAGE 2 — CD : Deploy infra + app
+# ─────────────────────────────────────────
+- stage: CD
+  displayName: 'Deploy to Azure'
+  dependsOn: CI
+  condition: succeeded()
+  jobs:
+  - job: Deploy
+    displayName: 'Deploy Infrastructure and App'
+    timeoutInMinutes: 30
+    cancelTimeoutInMinutes: 5
+    steps:
+
+    - checkout: self
+      fetchDepth: 1
+
+    - task: AzureCLI@2
+      displayName: 'Validate Bicep template'
+      inputs:
+        azureSubscription: '$(AZURE_SERVICE_CONNECTION)'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          az deployment group validate \
+            --resource-group $(RESOURCE_GROUP) \
+            --template-file bicep/main.bicep \
+            --parameters \
+              env=dev \
+              location=swedencentral \
+              projectName=miniplatform \
+              dbAdminUser=$(DB_USER) \
+              dbAdminPassword=$(DB_PASSWORD)
+
+    - task: AzureCLI@2
+      displayName: 'Deploy Bicep infrastructure'
+      inputs:
+        azureSubscription: '$(AZURE_SERVICE_CONNECTION)'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          az deployment group create \
+            --resource-group $(RESOURCE_GROUP) \
+            --template-file bicep/main.bicep \
+            --parameters \
+              env=dev \
+              location=swedencentral \
+              projectName=miniplatform \
+              dbAdminUser=$(DB_USER) \
+              dbAdminPassword=$(DB_PASSWORD)
+
+    - script: |
+        echo "Infrastructure deployed successfully"
+        echo "Image: $(ACR_LOGIN_SERVER)/$(IMAGE_NAME):$(IMAGE_TAG)"
+      displayName: 'Deployment summary'

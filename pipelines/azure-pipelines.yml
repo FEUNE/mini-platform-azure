@@ -52,10 +52,7 @@ stages:
         npm audit --audit-level=high
       displayName: 'Install dependencies + audit'
 
-    - script: |
-        echo "$(ACR_PASSWORD)" | docker login $(ACR_LOGIN_SERVER) \
-          --username $(ACR_USERNAME) \
-          --password-stdin
+    - script: echo "$(ACR_PASSWORD)" | docker login $(ACR_LOGIN_SERVER) --username $(ACR_USERNAME) --password-stdin
       displayName: 'Login to ACR'
 
     - script: |

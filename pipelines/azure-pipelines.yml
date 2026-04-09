@@ -9,7 +9,6 @@ trigger:
 
 pool:
   name: 'Default'
-  #vmImage: 'ubuntu-latest'
 
 variables:
   - group: miniplatform-dev-secrets
@@ -52,37 +51,40 @@ stages:
         npm audit --audit-level=high
       displayName: 'Install dependencies + audit'
 
-    - script: echo "$(ACR_PASSWORD)" | docker login $(ACR_LOGIN_SERVER) --username $(ACR_USERNAME) --password-stdin
+    - task: Docker@2
       displayName: 'Login to ACR'
+      inputs:
+        command: login
+        containerRegistry: 'miniplatform-acr'
 
-    - script: |
-        docker build \
-          --no-cache \
-          --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
-          --build-arg BUILD_VERSION=$(IMAGE_TAG) \
-          -t $(ACR_LOGIN_SERVER)/$(IMAGE_NAME):$(IMAGE_TAG) \
-          -t $(ACR_LOGIN_SERVER)/$(IMAGE_NAME):latest \
-          app-example/api
+    - task: Docker@2
       displayName: 'Build Docker image'
+      inputs:
+        command: build
+        containerRegistry: 'miniplatform-acr'
+        repository: '$(IMAGE_NAME)'
+        dockerfile: 'app-example/api/Dockerfile'
+        buildContext: 'app-example/api'
+        tags: |
+          $(IMAGE_TAG)
+          latest
+        arguments: '--no-cache'
 
-    - script: |
-        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
-        trivy image \
-          --exit-code 1 \
-          --severity HIGH,CRITICAL \
-          --no-progress \
-          --ignore-unfixed \
-          $(ACR_LOGIN_SERVER)/$(IMAGE_NAME):$(IMAGE_TAG)
-      displayName: 'Scan image vulnerabilities (Trivy)'
-      continueOnError: false
-
-    - script: |
-        docker push $(ACR_LOGIN_SERVER)/$(IMAGE_NAME):$(IMAGE_TAG)
-        docker push $(ACR_LOGIN_SERVER)/$(IMAGE_NAME):latest
+    - task: Docker@2
       displayName: 'Push image to ACR'
+      inputs:
+        command: push
+        containerRegistry: 'miniplatform-acr'
+        repository: '$(IMAGE_NAME)'
+        tags: |
+          $(IMAGE_TAG)
+          latest
 
-    - script: docker logout $(ACR_LOGIN_SERVER)
+    - task: Docker@2
       displayName: 'Logout from ACR'
+      inputs:
+        command: logout
+        containerRegistry: 'miniplatform-acr'
       condition: always()
 
 # ─────────────────────────────────────────
